@@ -6,6 +6,7 @@ Colorful, metrics-first redesign with live Excel sync.
 
 import os
 import io
+from pathlib import Path
 from datetime import datetime
 
 import streamlit as st
@@ -19,9 +20,13 @@ from excel_parser import parse_excel, DashboardData
 # ---------------------------------------------------------------------------
 st.set_page_config(page_title="Gen AI Champions Tracking Dashboard", page_icon="🚀", layout="wide")
 
+BASE_DIR = Path(__file__).parent
+
+DEFAULT_EXCEL_PATH = BASE_DIR / "data" / "AI Champions Initiative Report.xlsx"
+
 EXCEL_SOURCE_PATH = os.environ.get(
     "EXCEL_SOURCE_PATH",
-    r"C:\Users\mpi2cob\OneDrive - Bosch Group\Boopathi Drive\BD COB AI Synergy\AI Champion Activity\AI Champions Initiative Report.xlsx"
+    str(DEFAULT_EXCEL_PATH)
 )
 
 STATUS_COLORS = {
