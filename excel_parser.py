@@ -4,8 +4,7 @@ Parses the Gen AI Champions Initiative Excel sheet into structured data.
 
 Handles the real-world messy layout:
   Region 1: header block (Initiative Name / Owner / Supported By / Champions / Network)
-  Region 2: Topic / Sub topics / Progress / Lead / Key Points / Start Date / End Date /
-            Duration / Docupedia Link table (with topic-group rollups)
+  Region 2: Topic / Sub topics / Progress / Lead / Key Points / Completion Date / Duration / Docupedia Link table (with topic-group rollups)
   Region 3: freeform notes after the table
 
 Optional second sheet (any of: "Activity Sessions", "Activity_Sessions", "ActivitySessions",
@@ -31,12 +30,10 @@ class ActivitySession:
     """Represents a child session/record for an activity (e.g., individual tech talks)."""
     session_name: str
     activity_name: str  # Links back to the parent subtopic by name
+    date: str | None = None
     status: str | None = None
-    start_date: str | None = None
-    end_date: str | None = None
-    duration: str | None = None
-    timeline: str | None = None
-    notes: str | None = None
+    moderator: str | None = None
+    docupedia_link: str | None = None
 
 
 @dataclass
@@ -45,8 +42,7 @@ class Subtopic:
     progress_pct: float | None = None
     lead: str | None = None
     key_points: str | None = None
-    start_date: str | None = None
-    end_date: str | None = None
+    end_date: str | None = None  # Excel "Completion Date"; retained for app.py compatibility
     duration: str | None = None
     docupedia_link: str | None = None
     sessions: list[ActivitySession] = field(default_factory=list)
@@ -146,8 +142,7 @@ def parse_excel(filepath: str) -> DashboardData:
     ws = wb[wb.sheetnames[0]]  # always take the first sheet, don't hardcode a name
     rows = list(ws.iter_rows(values_only=True))
 
-    DOCUPEDIA_COL_IDX = 8  # column I (0-based index 8) -- Docupedia Link
-    docupedia_link_map = _extract_hyperlink_map(ws, DOCUPEDIA_COL_IDX)
+
 
     # ---- Region 1: header block ----
     initiative_name, owner, supported_by = None, None, None
@@ -174,12 +169,27 @@ def parse_excel(filepath: str) -> DashboardData:
                 n, d = _split_name_dept(str(row[4]))
                 champions.append(ChampionMember(name=n, department=d, group="AI Champions Network"))
 
+    # Resolve the updated topic-table columns from the Excel header.
+    topic_header = rows[header_end_idx] if header_end_idx < len(rows) else ()
+    topic_header_map = {
+        str(value).strip().lower(): idx
+        for idx, value in enumerate(topic_header)
+        if value is not None and str(value).strip()
+    }
+    completion_date_idx = topic_header_map.get("completion date")
+    duration_idx = topic_header_map.get("duration")
+    docupedia_idx = topic_header_map.get("docupedia link")
+    docupedia_link_map = (
+        _extract_hyperlink_map(ws, docupedia_idx)
+        if docupedia_idx is not None else {}
+    )
+
     # ---- Region 2: topics table ----
-    # Column layout: A Topic | B Sub topics | C Progress | D Lead | E Key Points |
-    #                F Start Date | G End Date | H Duration | I Docupedia Link
-    # NOTE: there is deliberately NO placeholder/stray column between Key Points and
-    # Start Date -- an earlier version had a dead "stray_val" read here that silently
-    # shifted every field after it by one column. Don't reintroduce that.
+    # Updated column layout:
+    # A Topic | B Sub topics | C Progress | D Lead | E Key Points |
+    # F Completion Date | G Duration | H Docupedia Link
+    # Completion Date is stored in end_date internally so the existing overdue UI
+    # logic in app.py continues to work without any app-side change.
     topics: list[TopicGroup] = []
     current_group: TopicGroup | None = None
     notes: list[str] = []
@@ -201,10 +211,18 @@ def parse_excel(filepath: str) -> DashboardData:
         progress_val = row[2] if len(row) > 2 else None
         lead_val = row[3] if len(row) > 3 else None
         keypoints_val = row[4] if len(row) > 4 else None
-        start_date_val = row[5] if len(row) > 5 else None
-        end_date_val = row[6] if len(row) > 6 else None
-        duration_val = row[7] if len(row) > 7 else None
-        docupedia_val = row[8] if len(row) > 8 else None
+        end_date_val = (
+            row[completion_date_idx]
+            if completion_date_idx is not None and len(row) > completion_date_idx else None
+        )
+        duration_val = (
+            row[duration_idx]
+            if duration_idx is not None and len(row) > duration_idx else None
+        )
+        docupedia_val = (
+            row[docupedia_idx]
+            if docupedia_idx is not None and len(row) > docupedia_idx else None
+        )
 
         is_note_row = (
             subtopic_val is not None
@@ -212,7 +230,6 @@ def parse_excel(filepath: str) -> DashboardData:
             and lead_val is None
             and keypoints_val is None
             and topic_val is None
-            and start_date_val is None
             and end_date_val is None
             and duration_val is None
             and docupedia_val is None
@@ -245,7 +262,6 @@ def parse_excel(filepath: str) -> DashboardData:
                 progress_pct=_pct(progress_val),
                 lead=str(lead_val).strip() if lead_val else None,
                 key_points=str(keypoints_val).strip() if keypoints_val else None,
-                start_date=_format_date(start_date_val),
                 end_date=_format_date(end_date_val),
                 duration=str(duration_val).strip() if duration_val else None,
                 docupedia_link=link_final,
@@ -274,12 +290,10 @@ def parse_excel(filepath: str) -> DashboardData:
 FIELD_HEADER_ALIASES = {
     "activity_name": ["activity name", "parent activity", "sub topic", "subtopic", "sub-topic", "activity"],
     "session_name":  ["session name", "session title", "title", "session"],
+    "date":          ["date", "session date"],
     "status":        ["status"],
-    "start_date":    ["start date", "start"],
-    "end_date":      ["end date", "end"],
-    "duration":      ["duration", "elapsed"],
-    "timeline":      ["timeline"],
-    "notes":         ["notes", "note", "remarks"],
+    "moderator":     ["moderator", "owner", "session owner", "lead"],
+    "docupedia_link":["docupedia link", "docupedia", "link"],
 }
 
 
@@ -303,6 +317,13 @@ def _parse_activity_sessions(workbook) -> list[ActivitySession]:
     if not rows:
         return []
 
+    # Preserve real hyperlink targets from the Activity_Sessions sheet.
+    session_hyperlinks = {}
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.hyperlink and cell.hyperlink.target:
+                session_hyperlinks[(cell.row, cell.column - 1)] = cell.hyperlink.target
+
     header_idx = None
     col_indices = {}
     for i, row in enumerate(rows[:10]):
@@ -324,7 +345,7 @@ def _parse_activity_sessions(workbook) -> list[ActivitySession]:
         return []
 
     sessions: list[ActivitySession] = []
-    for row in rows[header_idx + 1:]:
+    for excel_row_num, row in enumerate(rows[header_idx + 1:], start=header_idx + 2):
         if _is_blank_row(row):
             continue
 
@@ -339,15 +360,29 @@ def _parse_activity_sessions(workbook) -> list[ActivitySession]:
         if not activity_name or not session_name:
             continue
 
+        link_idx = col_indices.get("docupedia_link")
+        link_value = get("docupedia_link")
+        session_link = (
+            session_hyperlinks.get((excel_row_num, link_idx))
+            if link_idx is not None else None
+        )
+
+        if not session_link and link_value:
+            raw_link = str(link_value).strip()
+            hyperlink_match = re.search(
+                r'=HYPERLINK\(["\']([^"\']+)["\']',
+                raw_link,
+                flags=re.IGNORECASE,
+            )
+            session_link = hyperlink_match.group(1) if hyperlink_match else raw_link
+
         sessions.append(ActivitySession(
             activity_name=str(activity_name).strip(),
             session_name=str(session_name).strip(),
+            date=_format_date(get("date")),
             status=str(get("status")).strip() if get("status") else None,
-            start_date=_format_date(get("start_date")),
-            end_date=_format_date(get("end_date")),
-            duration=str(get("duration")).strip() if get("duration") else None,
-            timeline=str(get("timeline")).strip() if get("timeline") else None,
-            notes=str(get("notes")).strip() if get("notes") else None,
+            moderator=str(get("moderator")).strip() if get("moderator") else None,
+            docupedia_link=session_link,
         ))
 
     return sessions

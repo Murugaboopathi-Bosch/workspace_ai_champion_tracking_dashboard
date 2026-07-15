@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import datetime, date as date_type
 
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -96,6 +97,18 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif !important; }
 
 .block-container { padding-top: 1.6rem; }
 
+.st-key-fixed_header {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    background: #FFFFFF;
+    padding: 10px 0 8px 0;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #EEF0F6;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+}
+
+
 .kpi-card {
     border-radius: 18px;
     padding: 20px 22px;
@@ -134,7 +147,7 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif !important; }
 /* Fixed-width grid so every row's columns line up vertically, regardless of
    how long any individual piece of text is. Overflow truncates with an
    ellipsis instead of pushing later columns out of alignment. */
-.sub-grid-cols { grid-template-columns: 1fr 130px 46px 220px 130px 34px 96px; }
+.sub-grid-cols { grid-template-columns: 1fr 130px 46px 220px 130px 96px; }
 
 .sub-header {
     display: grid;
@@ -233,26 +246,87 @@ h1, h2, h3 { font-family: 'Poppins', sans-serif !important; }
     border-left: 3px solid #A78BFA;
 }
 .session-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 12px; margin-bottom: 8px;
-    background: white; border-radius: 6px;
+    display: grid;
+    grid-template-columns: minmax(320px, 2.4fr) minmax(120px, 1fr) minmax(130px, 1fr) minmax(180px, 1.4fr) minmax(160px, 1.2fr);
+    width: 100%;
+    align-items: center;
+    column-gap: 16px;
+    padding: 12px 18px;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+    background: white;
+    border-radius: 6px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
+
+.session-name,
+.session-date,
+.session-status,
+.session-moderator,
+.session-link {
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+    justify-self: stretch;
+    align-self: center;
+}
 .session-name {
-    flex: 2; font-weight: 600; font-size: 13px; color: #1E1B2E;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    color: #1E1B2E;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.4;
+}
+.session-date, .session-moderator, .session-link {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6B7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .session-status {
-    flex: 1; font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
 }
-.session-dates {
-    flex: 2; font-size: 12px; color: #6B7280;
+.session-link a {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #4F46E5;
+    text-decoration: none;
 }
-.session-duration {
-    flex: 1; font-size: 12px; color: #6B7280;
+.session-count-link {
+    margin-left: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #7C3AED !important;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+.session-count-link:hover {
+    color: #5B21B6 !important;
+    text-decoration-thickness: 2px;
+}
+.session-anchor {
+    display: block;
+    position: relative;
+    top: -16px;
+    visibility: hidden;
 }
 .session-status-badge {
-    display: inline-block; padding: 3px 10px; border-radius: 12px;
-    font-size: 11px; font-weight: 600; white-space: nowrap;
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
 }
 .session-completed { background: #D1FAE5; color: #065F46; }
 .session-ongoing { background: #DBEAFE; color: #1E40AF; }
@@ -312,29 +386,30 @@ data: DashboardData | None = st.session_state.get("data")
 # ---------------------------------------------------------------------------
 # HEADER
 # ---------------------------------------------------------------------------
-col_title, col_sync = st.columns([4, 1.4], vertical_alignment="center")
-with col_title:
-    st.markdown(f"## 🚀 {data.initiative_name if data else 'Gen AI Champions Initiative'}")
-    if data:
-        st.caption(f"Owner: **{data.owner or '—'}** · Supported by: **{data.supported_by or '—'}**")
-with col_sync:
-    if st.button("🔄 Sync Now", width='stretch'):
-        try:
-            refresh_data(EXCEL_SOURCE_PATH)
-            st.success("Synced!")
-            st.rerun()
-        except PermissionError:
-            filename = os.path.basename(EXCEL_SOURCE_PATH)
-            st.toast(f"⚠️ {filename} is open — please close it", icon="⚠️")
-            st.warning(f"**Please close \"{filename}\" in Excel**, then click Sync Now again. The file can't be read while it's open.")
-        except Exception as e:
-            st.session_state["path_diagnostic"] = _diagnose_path(EXCEL_SOURCE_PATH)
-            st.error(f"Sync failed.\n\n{_friendly_error(e)}")
-            st.json(st.session_state["path_diagnostic"])
+with st.container(key="fixed_header"):
+    col_title, col_sync = st.columns([4, 1.4], vertical_alignment="center")
+    with col_title:
+        st.markdown(f"## 🚀 {data.initiative_name if data else 'Gen AI Champions Initiative'}")
+        if data:
+            st.caption(f"Owner: **{data.owner or '—'}** · Supported by: **{data.supported_by or '—'}**")
+    with col_sync:
+        if st.button("🔄 Sync Now", width='stretch'):
+            try:
+                refresh_data(EXCEL_SOURCE_PATH)
+                st.success("Synced!")
+                st.rerun()
+            except PermissionError:
+                filename = os.path.basename(EXCEL_SOURCE_PATH)
+                st.toast(f"⚠️ {filename} is open — please close it", icon="⚠️")
+                st.warning(f"**Please close \"{filename}\" in Excel**, then click Sync Now again. The file can't be read while it's open.")
+            except Exception as e:
+                st.session_state["path_diagnostic"] = _diagnose_path(EXCEL_SOURCE_PATH)
+                st.error(f"Sync failed.\n\n{_friendly_error(e)}")
+                st.json(st.session_state["path_diagnostic"])
 
-last_synced = st.session_state.get("last_synced")
-if last_synced:
-    st.caption(f"Last synced: {last_synced.strftime('%d %b %Y, %H:%M')}")
+    last_synced = st.session_state.get("last_synced")
+    if last_synced:
+        st.caption(f"Last synced: {last_synced.strftime('%d %b %Y, %H:%M')}")
 
 if data is None:
     if st.session_state.get("load_error_type") == "permission":
@@ -478,7 +553,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.markdown("### 📌 Topics & Sub-Topics")
 
-for topic in data.topics:
+for topic_idx, topic in enumerate(data.topics):
     overall = topic.overall_progress_pct
     overall_color = STATUS_COLORS[status_for(overall)] if overall is not None else "#94A3B8"
     overall_display = overall if overall is not None else 0
@@ -505,17 +580,19 @@ for topic in data.topics:
             timeline_text = "—"
         dates_html = f'<div class="sub-dates" style="color:{timeline_color};">{timeline_text}</div>'
 
-        # Docupedia link -- compact icon (its column is narrow), always rendered
-        # so the grid stays aligned whether or not a given row has a link.
-        if s.docupedia_link:
-            docupedia_html = f'<a href="{s.docupedia_link}" target="_blank" class="docupedia-link" title="Open Docupedia page">📄</a>'
-        else:
-            docupedia_html = '<span></span>'
         
         # Session indicator
         session_indicator = ""
         if has_sessions:
-            session_indicator = f'<span style="margin-left: 8px; font-size: 11px; color: #7C3AED;">({len(s.sessions)} sessions)</span>'
+            session_anchor_id = f"session-{topic_idx}-{idx}"
+            session_indicator = (
+                f'<a class="session-count-link" '
+                f'href="#{session_anchor_id}" '
+                f'data-session-target="{session_anchor_id}" '
+                f'data-session-name="{s.name}" '
+                f'title="View {len(s.sessions)} session(s)">'
+                f'({len(s.sessions)} sessions)</a>'
+            )
         
         subtopic_rows_html += _html(f"""
         <div class="sub-row sub-grid-cols">
@@ -524,7 +601,6 @@ for topic in data.topics:
             <div class="pbar-pct" style="color:{color};">{pct}%</div>
             <div class="sub-lead">👤 {lead}</div>
             {dates_html}
-            {docupedia_html}
             <div><span class="status-chip" style="background:{color};">{status}</span></div>
         </div>
         """)
@@ -545,7 +621,7 @@ for topic in data.topics:
             <div class="topic-overall-fill" style="width:{overall_display}%; background:{overall_color};"></div>
         </div>
         <div class="sub-header sub-grid-cols">
-            <div>Activity</div><div style="grid-column: span 2;">Progress</div><div>Lead</div><div>Completion Timeline</div><div>Link</div><div>Status</div>
+            <div>Activity</div><div style="grid-column: span 2;">Progress</div><div>Lead</div><div>Completion Timeline</div><div>Status</div>
         </div>
         {subtopic_rows_html}
     </div>
@@ -553,7 +629,15 @@ for topic in data.topics:
     
     # Now render sessions using Streamlit expanders (outside the HTML card)
     for s, idx in subtopics_with_sessions:
-        with st.expander(f"📋 {s.name} — View {len(s.sessions)} Session(s)", expanded=False):
+        session_anchor_id = f"session-{topic_idx}-{idx}"
+        st.markdown(
+            f'<span id="{session_anchor_id}" class="session-anchor"></span>',
+            unsafe_allow_html=True,
+        )
+        with st.expander(
+            f"📋 {s.name} — View {len(s.sessions)} Session(s)",
+            expanded=False,
+        ):
             for session in s.sessions:
                 # Determine session status badge
                 session_status = session.status or "Unknown"
@@ -565,29 +649,72 @@ for topic in data.topics:
                 else:
                     status_class = "session-planned"
                 
-                # Format session dates
-                session_dates = []
-                if session.start_date:
-                    session_dates.append(f"Start: {session.start_date}")
-                if session.end_date:
-                    session_dates.append(f"End: {session.end_date}")
-                session_dates_str = " | ".join(session_dates) if session_dates else session.timeline or "—"
-                
-                session_duration = session.duration or "—"
+                session_date = session.date or "—"
+                session_moderator = session.moderator or "—"
+                session_link_html = (
+                    f'<a href="{session.docupedia_link}" target="_blank">📄 Open Docupedia</a>'
+                    if session.docupedia_link else "—"
+                )
                 
                 st.markdown(_html(f"""
                 <div class="session-row">
                     <div class="session-name">▸ {session.session_name}</div>
+                    <div class="session-date">{session_date}</div>
                     <div class="session-status">
                         <span class="session-status-badge {status_class}">{session_status}</span>
                     </div>
-                    <div class="session-dates">{session_dates_str}</div>
-                    <div class="session-duration">⏱️ {session_duration}</div>
+                    <div class="session-moderator">👤 {session_moderator}</div>
+                    <div class="session-link">{session_link_html}</div>
                 </div>
                 """), unsafe_allow_html=True)
-                
-                if session.notes:
-                    st.caption(f"💬 {session.notes}")
+
+
+# Browser-side session navigation: intercept the session-count link, open the
+# matching Streamlit expander and smooth-scroll to it without a Streamlit rerun.
+components.html(
+    """
+    <script>
+    (() => {
+        const doc = window.parent.document;
+        if (doc.__sessionNavigationInstalled) return;
+        doc.__sessionNavigationInstalled = true;
+
+        doc.addEventListener("click", (event) => {
+            const link = event.target.closest("a[data-session-target]");
+            if (!link) return;
+
+            event.preventDefault();
+            const targetId = link.getAttribute("data-session-target");
+            const sessionName = link.getAttribute("data-session-name");
+            const anchor = doc.getElementById(targetId);
+            if (!anchor) return;
+
+            // Match the Streamlit expander by its visible activity title.
+            // This is more reliable across Streamlit DOM wrapper changes.
+            const summaries = Array.from(doc.querySelectorAll("details > summary"));
+            const summary = summaries.find((item) =>
+                item.innerText &&
+                item.innerText.toLowerCase().includes(sessionName.toLowerCase())
+            );
+            const expander = summary ? summary.closest("details") : null;
+
+            if (summary && expander && !expander.open) {
+                summary.click();
+            }
+
+            window.setTimeout(() => {
+                (expander || anchor).scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
+            }, 180);
+        });
+    })();
+    </script>
+    """,
+    height=0,
+    width=0,
+)
 
 # ---------------------------------------------------------------------------
 # NOTES

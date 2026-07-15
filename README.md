@@ -6,6 +6,26 @@ button to re-read the file on demand, an AI chatbot grounded in the sheet
 data, and an AI-drafted monthly status summary — both powered by your org's
 **LLM Farm**.
 
+## 🎉 New Features (Enhanced Version)
+
+### Additional Activity Information
+- **Start Date, Completion Date, Duration**: Track timing for each activity
+- **Docupedia Links**: Clickable links to documentation pages
+- Automatic display of timeline information
+
+### Activity Sessions (One-to-Many Relationship)
+- Support for activities with multiple sessions/events
+- Example: AI Tech Talk with multiple completed and upcoming sessions
+- Expandable rows to view session details
+- Status-based color coding (Completed, Ongoing, Planned)
+
+### Generic & Reusable Implementation
+- Works with any activity without hardcoding
+- Uses separate "Activity Sessions" Excel sheet
+- Backward compatible with existing Excel files
+
+📚 **See [ENHANCEMENT_GUIDE.md](ENHANCEMENT_GUIDE.md) for detailed documentation on new features and Excel structure.**
+
 ## 1. Setup
 
 ```bash
