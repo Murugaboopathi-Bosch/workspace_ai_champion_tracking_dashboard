@@ -71,7 +71,7 @@ tabs will show a friendly "not configured" warning until you add the keys.
 streamlit run app.py
 ```
 
-Open the URL Streamlit prints (usually `http://localhost:8501`).
+Open the URL Streamlit prints (usually `http://localhost:8502`).
 
 ## 4. Run tests
 

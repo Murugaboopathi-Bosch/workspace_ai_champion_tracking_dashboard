@@ -6,12 +6,11 @@ Colorful, metrics-first redesign with live Excel sync.
 
 import os
 import io
-import requests
 from pathlib import Path
 from datetime import datetime, date as date_type
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv()  # reads a .env file in the working directory, if one exists
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -19,6 +18,12 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 from excel_parser import parse_excel, DashboardData
+from sharepoint_sync import (
+    download_excel_from_sharepoint,
+    is_configured as sharepoint_configured,
+    SharePointConfigError,
+    SharePointDownloadError,
+)
 
 # ---------------------------------------------------------------------------
 # CONFIG
@@ -88,69 +93,6 @@ def resolve_status(s):
     if end is not None and end < date_type.today():
         return "Overdue", True
     return base_status, False
-
-# ---------------------------------------------------------------------------
-# LLM CONFIG
-# ---------------------------------------------------------------------------
-LLM_API_KEY = os.environ.get("genaiplatform-farm-subscription-key", "")
-LLM_URL = os.environ.get("openai_base_url", "")
-LLM_MODEL = os.environ.get("openai_model", "gpt-4o")
-
-
-def build_context(d: DashboardData) -> str:
-    """Serialize all dashboard data — including key points — into a text block
-    used as the system-prompt context for the AI assistant."""
-    lines = [
-        f"Initiative: {d.initiative_name}",
-        f"Owner: {d.owner or 'N/A'}",
-        f"Supported By: {d.supported_by or 'N/A'}",
-        f"Team Members: {', '.join(c.name + (' (' + c.department + ')' if c.department else '') for c in d.champions)}",
-        "",
-        "=== ACTIVITIES & KEY POINTS ===",
-    ]
-    for topic in d.topics:
-        lines.append(f"\nTOPIC: {topic.name}  |  Overall Progress: {topic.overall_progress_pct or 0}%")
-        for s in topic.subtopics:
-            status, _ = resolve_status(s)
-            lines.append(f"  Activity: {s.name}")
-            lines.append(f"    Progress : {s.progress_pct or 0}%  |  Status: {status}  |  Lead: {s.lead or 'Unassigned'}")
-            if s.end_date:
-                lines.append(f"    Completion Date: {s.end_date}")
-            if s.duration:
-                lines.append(f"    Duration: {s.duration}")
-            if s.key_points:
-                lines.append(f"    Key Points: {s.key_points}")
-            if s.docupedia_link:
-                lines.append(f"    Documentation: {s.docupedia_link}")
-            if s.sessions:
-                lines.append(f"    Sessions ({len(s.sessions)}):")
-                for sess in s.sessions:
-                    lines.append(
-                        f"      • {sess.session_name} | Date: {sess.date or 'TBD'} "
-                        f"| Status: {sess.status or 'Unknown'} "
-                        f"| Moderator: {sess.moderator or 'N/A'}"
-                    )
-    if d.notes:
-        lines.append("\n=== NOTES & OPEN ITEMS ===")
-        for n in d.notes:
-            lines.append(f"  - {n}")
-    return "\n".join(lines)
-
-
-def call_llm(messages: list[dict]) -> str:
-    """POST to the LLM Farm endpoint and return the assistant reply text."""
-    headers = {
-        "Content-Type": "application/json",
-        "genaiplatform-farm-subscription-key": LLM_API_KEY,
-    }
-    payload = {
-        "model": LLM_MODEL,
-        "messages": messages,
-    }
-    resp = requests.post(LLM_URL, headers=headers, json=payload, timeout=60)
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
-
 
 # ---------------------------------------------------------------------------
 # STYLE
@@ -429,7 +371,17 @@ def load_data(path: str) -> DashboardData:
     return parse_excel(path)
 
 
+def _pull_latest_file(path: str):
+    """If SharePoint env vars are configured, download the latest copy of the
+    file to `path` before parsing. Otherwise this is a no-op and `path` is
+    read as a plain local file, exactly as before (e.g. a OneDrive-synced
+    folder, or a file copied there some other way)."""
+    if sharepoint_configured():
+        download_excel_from_sharepoint(path)
+
+
 def refresh_data(path: str):
+    _pull_latest_file(path)
     load_data.clear()
     st.session_state["data"] = load_data(path)
     st.session_state["last_synced"] = datetime.now()
@@ -437,8 +389,13 @@ def refresh_data(path: str):
 
 if "data" not in st.session_state:
     try:
+        _pull_latest_file(EXCEL_SOURCE_PATH)
         st.session_state["data"] = load_data(EXCEL_SOURCE_PATH)
         st.session_state["last_synced"] = datetime.now()
+    except (SharePointConfigError, SharePointDownloadError) as e:
+        st.session_state["data"] = None
+        st.session_state["load_error_type"] = "sharepoint"
+        st.session_state["load_error"] = str(e)
     except PermissionError:
         st.session_state["data"] = None
         st.session_state["load_error_type"] = "permission"
@@ -465,6 +422,8 @@ with st.container(key="fixed_header"):
                 refresh_data(EXCEL_SOURCE_PATH)
                 st.success("Synced!")
                 st.rerun()
+            except (SharePointConfigError, SharePointDownloadError) as e:
+                st.error(f"SharePoint sync failed.\n\n{e}")
             except PermissionError:
                 filename = os.path.basename(EXCEL_SOURCE_PATH)
                 st.toast(f"⚠️ {filename} is open — please close it", icon="⚠️")
@@ -479,7 +438,9 @@ with st.container(key="fixed_header"):
         st.caption(f"Last synced: {last_synced.strftime('%d %b %Y, %H:%M')}")
 
 if data is None:
-    if st.session_state.get("load_error_type") == "permission":
+    if st.session_state.get("load_error_type") == "sharepoint":
+        st.error(f"Couldn't load the file from SharePoint.\n\n{st.session_state.get('load_error')}")
+    elif st.session_state.get("load_error_type") == "permission":
         filename = os.path.basename(EXCEL_SOURCE_PATH)
         st.warning(f"**Please close \"{filename}\" in Excel**, then click Sync Now above. The file can't be read while it's open.")
     else:
@@ -791,57 +752,3 @@ if data.notes:
     st.markdown("### 📝 Notes & Open Items")
     for n in data.notes:
         st.markdown(f'<div class="note-card">💡 {n}</div>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# AI CHAT ASSISTANT
-# ---------------------------------------------------------------------------
-st.divider()
-st.markdown("### 💬 Ask AI about this Initiative")
-st.caption("Ask anything — activity status, key points, who leads what, overdue items, sessions, etc.")
-
-if not LLM_API_KEY or not LLM_URL:
-    st.info(
-        "AI assistant is not configured. Add `genaiplatform-farm-subscription-key` "
-        "and `openai_base_url` to your `.env` file to enable it.",
-        icon="ℹ️",
-    )
-else:
-    if "chat_history" not in st.session_state:
-        st.session_state["chat_history"] = []
-
-    # Render existing conversation
-    for msg in st.session_state["chat_history"]:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    user_input = st.chat_input("Ask about activities, key points, progress, leads, sessions…")
-
-    if user_input:
-        st.session_state["chat_history"].append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
-        context = build_context(data)
-        system_prompt = (
-            "You are a helpful assistant for the Gen AI Champions Initiative dashboard. "
-            "Answer questions using ONLY the initiative data provided below. "
-            "Be concise, factual, and use bullet points where helpful. "
-            "If the answer is not in the data, say so clearly.\n\n"
-            f"{context}"
-        )
-        messages_to_send = [{"role": "system", "content": system_prompt}] + st.session_state["chat_history"]
-
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking…"):
-                try:
-                    reply = call_llm(messages_to_send)
-                    st.markdown(reply)
-                    st.session_state["chat_history"].append({"role": "assistant", "content": reply})
-                except Exception as e:
-                    error_text = f"Could not reach the AI assistant: {e}"
-                    st.error(error_text)
-
-    if st.session_state.get("chat_history"):
-        if st.button("🗑️ Clear chat history", key="clear_chat"):
-            st.session_state["chat_history"] = []
-            st.rerun()

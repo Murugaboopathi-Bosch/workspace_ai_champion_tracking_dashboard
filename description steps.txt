@@ -1,0 +1,27 @@
+Option 1 — Manual download (works right now, 2 minutes)
+Open the file in Teams → click the ↓ Download icon (or in browser: File → Download a copy)
+Save it to the data folder inside your project
+Your .env already has this path set — it will just work:
+When the manager updates the file → download again and replace it. Click 🔄 Sync Now in the dashboard.
+
+Option 2 — Ask manager to reshare from a folder (best long-term)
+Ask the manager to:
+
+Move/copy the file to a SharePoint Team Site (or their OneDrive "Shared" folder), not Teams chat
+Share the folder link with you
+Then you can use "Add shortcut to My files" → OneDrive auto-syncs forever.
+
+Option 3 — Get IT admin consent (proper automated approach)
+Raise a ticket with your IT/Azure admin to grant the Files.Read.All application permission with admin consent on app e3743913-b0a4-468c-97ce-3f4d885d43bd. Once done, the SharePoint API integration works automatically.
+
+Right now I'd recommend Option 1 — download to data, keep the SharePoint vars commented out in
+
+
+# 1. Does the name resolve?
+nslookup cob-c-012fr.cob.apac.bosch.com
+
+# 2. Is port 8502 actually reachable?
+Test-NetConnection -ComputerName cob-c-012fr.cob.apac.bosch.com -Port 8502
+
+# 3. If both pass, try in browser:
+http://cob-c-012fr.cob.apac.bosch.com:8502/

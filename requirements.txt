@@ -7,3 +7,5 @@ pydantic>=2.7
 pytest>=8.0
 plotly==6.2.0
 xlsxwriter==3.2.5
+requests>=2.31
+office365-rest-python-client>=2.5.0
