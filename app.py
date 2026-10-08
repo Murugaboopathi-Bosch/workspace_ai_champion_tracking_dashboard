@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime, date as date_type
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env")
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -92,9 +92,20 @@ def resolve_status(s):
 # ---------------------------------------------------------------------------
 # LLM CONFIG
 # ---------------------------------------------------------------------------
-LLM_API_KEY = os.environ.get("genaiplatform-farm-subscription-key", "")
-LLM_URL = os.environ.get("openai_base_url", "")
-LLM_MODEL = os.environ.get("openai_model", "gpt-4o")
+def _config(name: str, default: str = "") -> str:
+    """Environment/.env first, then Streamlit secrets (for hosts without a .env)."""
+    val = os.environ.get(name)
+    if val:
+        return val
+    try:
+        return str(st.secrets.get(name, default))
+    except Exception:
+        return default
+
+
+LLM_API_KEY = _config("genaiplatform-farm-subscription-key") or _config("GENAIPLATFORM_FARM_SUBSCRIPTION_KEY")
+LLM_URL = _config("openai_base_url") or _config("OPENAI_BASE_URL")
+LLM_MODEL = _config("openai_model") or _config("OPENAI_MODEL") or "gpt-4o"
 
 
 def build_context(d: DashboardData) -> str:
